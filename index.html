@@ -1,10 +1,11 @@
-
+Here is an HTML document that implements a persistent study timer, saving your progress even after you close and reopen the browser.
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
-    <title>StudyDuo · Smart Study Suite</title>
+    <title>StudyDuo · Persistent Smart Study Suite</title>
     <!-- Font Awesome & Chart.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -60,7 +61,6 @@
             margin-bottom: 1rem;
         }
 
-        /* header with logo */
         .app-header {
             display: flex;
             align-items: center;
@@ -152,7 +152,6 @@
             border: 1px solid #cdd9f0;
         }
 
-        /* subject items */
         .subject-item {
             background: white;
             border-radius: 1.4rem;
@@ -185,7 +184,6 @@
         .popup-trigger { background: #1f2b4e0c; }
         .delete-subj-btn { background: #fff0f0; color: #c7362b; }
 
-        /* MODAL */
         .modal {
             display: none;
             position: fixed;
@@ -216,7 +214,6 @@
             border-radius: 60px;
         }
 
-        /* TIMER MODELS */
         .timer-model-selector {
             display: flex;
             gap: 8px;
@@ -259,7 +256,6 @@
         .timer-click-hint { font-size: 0.7rem; color: #9aa9c7; margin-top: 8px; }
         .timer-box-click { cursor: pointer; }
 
-        /* bottom dashboard */
         .bottom-dash {
             position: fixed;
             bottom: 0;
@@ -290,7 +286,6 @@
         .nav-btn i { font-size: 1.6rem; }
         .nav-btn.active { color: #1f2b4e; background: #eef3ff; font-weight: 700; }
 
-        /* analysis filter - enhanced */
         .filter-bar {
             display: flex;
             gap: 10px;
@@ -333,7 +328,6 @@
 </head>
 <body>
 
-<!-- MODAL for days checklist -->
 <div id="dayModal" class="modal">
     <div class="modal-card">
         <h3 id="modalTitle">✅ Mark completed days</h3>
@@ -342,7 +336,6 @@
     </div>
 </div>
 
-<!-- HOME SCREEN -->
 <div id="homeScreen" class="app-screen active-screen">
     <div class="app-header">
         <div class="logo-area">
@@ -371,7 +364,6 @@
     </div>
 </div>
 
-<!-- TIMER SCREEN (with model selector) -->
 <div id="timerScreen" class="app-screen">
     <div class="card" style="text-align: center;">
         <h2><i class="fas fa-stopwatch"></i> Smart Timer</h2>
@@ -383,32 +375,27 @@
         <div id="timerVisualArea" class="timer-visual-container"></div>
         <div style="display: flex; justify-content: center; gap: 12px; margin-top: 5px;">
             <button id="startTimerBtn"><i class="fas fa-play"></i> Start / Resume</button>
+            <button id="stopTimerBtn" class="btn-outline"><i class="fas fa-stop"></i> Stop & Save</button>
         </div>
-        <div class="footnote">⏰ Tap timer to pause/resume • auto-saves at midnight</div>
+        <div class="footnote">⏰ Tap timer to pause/resume • Auto-saves every 15s & before closing</div>
     </div>
 </div>
 
-<!-- ANALYSIS SCREEN with enhanced filters -->
 <div id="analysisScreen" class="app-screen">
     <div class="card">
         <h2><i class="fas fa-chart-line"></i> Study analytics</h2>
-        
-        <!-- Quick filter buttons: Last Week, Last Month, Full Year, All Time -->
         <div class="quick-filters">
             <button class="quick-filter-btn" data-filter="week"><i class="fas fa-calendar-week"></i> Last Week</button>
             <button class="quick-filter-btn" data-filter="month"><i class="fas fa-calendar-alt"></i> Last Month</button>
             <button class="quick-filter-btn" data-filter="year"><i class="fas fa-calendar-year"></i> Full Year</button>
             <button class="quick-filter-btn" data-filter="all"><i class="fas fa-infinity"></i> All Time</button>
         </div>
-        
-        <!-- Custom date range picker -->
         <div class="filter-bar">
             <input type="date" id="filterStartDate" placeholder="Start date">
             <input type="date" id="filterEndDate" placeholder="End date">
             <button id="applyFilterBtn"><i class="fas fa-filter"></i> Apply</button>
             <button id="resetFilterBtn" class="btn-outline"><i class="fas fa-undo-alt"></i> Reset</button>
         </div>
-        
         <div class="stat-row">
             <div class="stat-card"><i class="fas fa-chart-simple"></i> <div id="totalStudyFiltered">0s</div><small>Total (filtered)</small></div>
             <div class="stat-card"><i class="fas fa-trophy"></i> <div id="bestDayFiltered">—</div><small>Best day</small></div>
@@ -418,7 +405,6 @@
     </div>
 </div>
 
-<!-- BOTTOM DASHBOARD -->
 <div class="bottom-dash">
     <button class="nav-btn" data-screen="home"><i class="fas fa-home"></i><span>Home</span></button>
     <button class="nav-btn" data-screen="timer"><i class="fas fa-stopwatch"></i><span>Timer</span></button>
@@ -426,7 +412,7 @@
 </div>
 
 <script>
-    // ---------- DATA ----------
+    // ---------- PERSISTENCE-FIXED TIMER ----------
     let subjects = [];
     let dailyLogs = {};
     let timerSeconds = 0;
@@ -435,12 +421,17 @@
     let currentModalSubjectId = null;
     let chartInstance = null;
     let currentTimerModel = "digital";
+    let autoSaveInterval = null;
 
-    // storage keys
-    const STORAGE_SUBJECTS = "StudyDuo_subjects_v5";
-    const STORAGE_LOGS = "StudyDuo_dailyLogs_v5";
+    const STORAGE_SUBJECTS = "StudyDuo_subjects_v6";
+    const STORAGE_LOGS = "StudyDuo_dailyLogs_v6";
+    const STORAGE_TIMER_SECONDS = "StudyDuo_timer_seconds";
+    const STORAGE_TIMER_LAST_DAY = "StudyDuo_timer_last_day";
+    const STORAGE_TIMER_RUNNING = "StudyDuo_timer_running";
+    const STORAGE_TIMER_START_TIME = "StudyDuo_timer_start_time";
 
     function loadData() {
+        // subjects
         const storedSubjects = localStorage.getItem(STORAGE_SUBJECTS);
         if (storedSubjects) {
             subjects = JSON.parse(storedSubjects);
@@ -454,29 +445,154 @@
                 }
             });
         } else subjects = [];
+        
+        // logs
         const storedLogs = localStorage.getItem(STORAGE_LOGS);
         if (storedLogs) dailyLogs = JSON.parse(storedLogs);
         else dailyLogs = {};
     }
-    function saveSubjects() { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify(subjects)); }
-    function saveLogs() { localStorage.setItem(STORAGE_LOGS, JSON.stringify(dailyLogs)); }
-
+    
+    // ----- PERSISTENT TIMER LOGIC (cross-session, cross-refresh) -----
+    function persistTimerState() {
+        localStorage.setItem(STORAGE_TIMER_SECONDS, timerSeconds.toString());
+        localStorage.setItem(STORAGE_TIMER_LAST_DAY, getTodayKey());
+        localStorage.setItem(STORAGE_TIMER_RUNNING, isTimerRunning ? "true" : "false");
+        if (isTimerRunning && timerInterval) {
+            localStorage.setItem(STORAGE_TIMER_START_TIME, Date.now().toString());
+        } else {
+            localStorage.removeItem(STORAGE_TIMER_START_TIME);
+        }
+    }
+    
+    function loadTimerFromStorage() {
+        const savedSeconds = localStorage.getItem(STORAGE_TIMER_SECONDS);
+        const savedLastDay = localStorage.getItem(STORAGE_TIMER_LAST_DAY);
+        const savedRunning = localStorage.getItem(STORAGE_TIMER_RUNNING);
+        const savedStartTime = localStorage.getItem(STORAGE_TIMER_START_TIME);
+        
+        // restore seconds or default 0
+        if (savedSeconds !== null) {
+            timerSeconds = parseInt(savedSeconds, 10) || 0;
+        } else {
+            timerSeconds = 0;
+        }
+        
+        const currentDay = getTodayKey();
+        
+        // if the stored day is different from today -> flush previous session's timer to logs (day boundary)
+        if (savedLastDay && savedLastDay !== currentDay && timerSeconds > 0) {
+            // add previous day's accumulated seconds to logs
+            if (!dailyLogs[savedLastDay]) dailyLogs[savedLastDay] = 0;
+            dailyLogs[savedLastDay] += timerSeconds;
+            saveLogs();
+            timerSeconds = 0; // reset for new day
+            persistTimerState();
+        } else if (!savedLastDay) {
+            persistTimerState(); // set initial day
+        }
+        
+        // restore running state if valid
+        if (savedRunning === "true" && savedStartTime) {
+            const startTime = parseInt(savedStartTime, 10);
+            const now = Date.now();
+            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            if (elapsedSeconds > 0 && elapsedSeconds < 86400) {
+                timerSeconds += elapsedSeconds;
+                persistTimerState();
+                // continue running
+                isTimerRunning = true;
+                startTimerInternal();
+            } else {
+                isTimerRunning = false;
+                persistTimerState();
+            }
+        } else {
+            isTimerRunning = false;
+            persistTimerState();
+        }
+        
+        // ensure we never have negative
+        if (timerSeconds < 0) timerSeconds = 0;
+    }
+    
+    function startTimerInternal() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (isTimerRunning) {
+                timerSeconds++;
+                updateTimerDisplayAndViews();
+                persistTimerState();
+                // optional: auto-save every 15 seconds to logs? better: flush only on stop / page unload / day change
+                // We'll keep real-time persistence of timer value.
+                const lastTrack = localStorage.getItem(STORAGE_TIMER_LAST_DAY);
+                const nowDay = getTodayKey();
+                if (lastTrack && lastTrack !== nowDay) {
+                    // day changed while timer running: flush current to yesterday's log
+                    if (!dailyLogs[lastTrack]) dailyLogs[lastTrack] = 0;
+                    dailyLogs[lastTrack] += timerSeconds;
+                    saveLogs();
+                    timerSeconds = 0;
+                    persistTimerState();
+                    updateTimerDisplayAndViews();
+                    localStorage.setItem(STORAGE_TIMER_LAST_DAY, nowDay);
+                }
+            }
+        }, 1000);
+    }
+    
+    function startTimer() {
+        if (isTimerRunning) return;
+        isTimerRunning = true;
+        persistTimerState();
+        if (timerInterval) {
+            // already interval exists, just set flag
+        } else {
+            startTimerInternal();
+        }
+    }
+    
+    function pauseTimer() {
+        if (!isTimerRunning) return;
+        isTimerRunning = false;
+        persistTimerState();
+    }
+    
+    function stopAndSaveTimer() {
+        if (timerSeconds > 0) {
+            flushCurrentTimerToLog();
+        }
+        pauseTimer();
+        timerSeconds = 0;
+        persistTimerState();
+        updateTimerDisplayAndViews();
+    }
+    
+    function flushCurrentTimerToLog() {
+        if (timerSeconds <= 0) return;
+        const today = getTodayKey();
+        if (!dailyLogs[today]) dailyLogs[today] = 0;
+        dailyLogs[today] += timerSeconds;
+        saveLogs();
+        timerSeconds = 0;
+        persistTimerState();
+        updateTimerDisplayAndViews();
+        if (document.getElementById("analysisScreen").classList.contains("active-screen")) applyFilterAndRender();
+    }
+    
+    function toggleTimerPause() {
+        if (!timerInterval) startTimer();
+        else if (isTimerRunning) pauseTimer();
+        else startTimer();
+    }
+    
     function getTodayKey() {
         const d = new Date();
         return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
     }
-
-    function flushTimerToLog(secondsToAdd = null) {
-        let secs = (secondsToAdd !== null) ? secondsToAdd : timerSeconds;
-        if (secs <= 0) return;
-        const today = getTodayKey();
-        if (!dailyLogs[today]) dailyLogs[today] = 0;
-        dailyLogs[today] += secs;
-        saveLogs();
-        if (document.getElementById("analysisScreen").classList.contains("active-screen")) applyFilterAndRender();
-    }
-
-    // TIMER CORE
+    
+    function saveSubjects() { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify(subjects)); }
+    function saveLogs() { localStorage.setItem(STORAGE_LOGS, JSON.stringify(dailyLogs)); }
+    
     function updateTimerDisplayAndViews() {
         const hrs = Math.floor(timerSeconds / 3600);
         const mins = Math.floor((timerSeconds % 3600) / 60);
@@ -486,17 +602,15 @@
         const maxTotalSecs = 24*3600;
         const percent = Math.min(100, (totalSecs / maxTotalSecs) * 100);
         
+        const container = document.getElementById("timerVisualArea");
+        if (!container) return;
+        
         if (currentTimerModel === 'digital') {
-            const container = document.getElementById("timerVisualArea");
-            if (container) {
-                container.innerHTML = `<div class="digital-timer timer-box-click" id="timerClickRoot"><div class="digital-digits">${timeStr}</div><div class="timer-click-hint"><i class="fas fa-hand-pointer"></i> Tap to pause/resume</div></div>`;
-                attachTimerClick();
-            }
+            container.innerHTML = `<div class="digital-timer timer-box-click" id="timerClickRoot"><div class="digital-digits">${timeStr}</div><div class="timer-click-hint"><i class="fas fa-hand-pointer"></i> Tap to pause/resume</div></div>`;
         } else if (currentTimerModel === 'circle') {
             const radius = 75;
             const circumference = 2 * Math.PI * radius;
             const offset = circumference - (percent / 100) * circumference;
-            const container = document.getElementById("timerVisualArea");
             container.innerHTML = `
                 <div class="circle-timer timer-box-click" id="timerClickRoot">
                     <svg class="circle-svg" width="180" height="180" viewBox="0 0 180 180">
@@ -505,56 +619,34 @@
                     </svg>
                     <div class="circle-text">${timeStr}</div>
                 </div>`;
-            attachTimerClick();
         } else if (currentTimerModel === 'bar') {
-            const container = document.getElementById("timerVisualArea");
             container.innerHTML = `
                 <div class="bar-timer timer-box-click" id="timerClickRoot">
                     <div class="bar-bg"><div class="bar-fill" style="width: ${percent}%;"></div></div>
                     <div class="bar-digits">${timeStr}</div>
                     <div class="timer-click-hint">Tap to pause/resume</div>
                 </div>`;
-            attachTimerClick();
         }
+        attachTimerClick();
     }
     
     function attachTimerClick() {
         const el = document.getElementById("timerClickRoot");
-        if (el) el.addEventListener("click", toggleTimerPause);
+        if (el) {
+            // remove old listener to avoid duplicates
+            const newEl = el.cloneNode(true);
+            if (el.parentNode) el.parentNode.replaceChild(newEl, el);
+            newEl.addEventListener("click", toggleTimerPause);
+        }
     }
-
-    function startTimer() {
-        if (timerInterval && isTimerRunning) return;
-        if (timerInterval && !isTimerRunning) { isTimerRunning = true; return; }
-        isTimerRunning = true;
-        timerInterval = setInterval(() => {
-            if (isTimerRunning) {
-                timerSeconds++;
-                updateTimerDisplayAndViews();
-                const lastTrack = localStorage.getItem("timer_last_day");
-                const nowDay = getTodayKey();
-                if (lastTrack && lastTrack !== nowDay && timerSeconds > 0) {
-                    flushTimerToLog(timerSeconds);
-                    timerSeconds = 0;
-                    updateTimerDisplayAndViews();
-                    localStorage.setItem("timer_last_day", nowDay);
-                } else if (!lastTrack) localStorage.setItem("timer_last_day", nowDay);
-            }
-        }, 1000);
-    }
-    function pauseTimer() { if (timerInterval && isTimerRunning) isTimerRunning = false; }
-    function toggleTimerPause() {
-        if (!timerInterval) startTimer();
-        else if (isTimerRunning) pauseTimer();
-        else startTimer();
-    }
+    
     function changeTimerModel(model) {
         currentTimerModel = model;
         document.querySelectorAll('.model-btn').forEach(btn => btn.classList.remove('active-model'));
         document.querySelector(`.model-btn[data-model="${model}"]`).classList.add('active-model');
         updateTimerDisplayAndViews();
     }
-
+    
     // SUBJECTS & MODAL
     function renderSubjectsList() {
         const container = document.getElementById("subjectsListContainer");
@@ -573,6 +665,7 @@
         document.querySelectorAll('.popup-trigger').forEach(btn => btn.addEventListener('click', (e) => openDayModal(parseInt(btn.dataset.id))));
         document.querySelectorAll('.delete-subj-btn').forEach(btn => btn.addEventListener('click', (e) => { if(confirm("Delete subject?")) { subjects = subjects.filter(s => s.id !== parseInt(btn.dataset.id)); saveSubjects(); renderSubjectsList(); } }));
     }
+    
     function openDayModal(subjectId) {
         const subject = subjects.find(s => s.id === subjectId);
         if (!subject) return;
@@ -604,8 +697,8 @@
         document.getElementById("subjectNameInput").value = "";
         document.getElementById("daysNeededInput").value = "10";
     }
-
-    // ANALYSIS FILTER with quick filters
+    
+    // ANALYSIS
     let currentStartDate = null, currentEndDate = null;
     let activeQuickFilter = "all";
     
@@ -616,7 +709,6 @@
         let end = new Date();
         end.setUTCHours(23,59,59);
         const endStr = end.toISOString().split('T')[0];
-        
         if (filter === "week") {
             let startDate = new Date();
             startDate.setDate(today.getDate() - 7);
@@ -630,29 +722,19 @@
         } else {
             start = null;
         }
-        
         currentStartDate = start;
         currentEndDate = (filter !== "all") ? endStr : null;
-        
-        // update input fields
         document.getElementById("filterStartDate").value = currentStartDate || "";
         document.getElementById("filterEndDate").value = currentEndDate || "";
-        
-        // update active class on quick buttons
         document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelector(`.quick-filter-btn[data-filter="${filter}"]`).classList.add('active');
-        
         renderFilteredGraph();
     }
     
     function getFilteredLogs() {
         let filtered = { ...dailyLogs };
-        if (currentStartDate) {
-            filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date >= currentStartDate));
-        }
-        if (currentEndDate) {
-            filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date <= currentEndDate));
-        }
+        if (currentStartDate) filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date >= currentStartDate));
+        if (currentEndDate) filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date <= currentEndDate));
         return filtered;
     }
     
@@ -684,7 +766,6 @@
         const end = document.getElementById("filterEndDate").value;
         currentStartDate = start || null;
         currentEndDate = end || null;
-        // deactivate quick filter buttons
         activeQuickFilter = null;
         document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
         renderFilteredGraph();
@@ -703,8 +784,9 @@
     
     function formatDuration(sec) { if(!sec) return "0s"; let h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; if(h>0) return `${h}h ${m}m`; if(m>0) return `${m}m ${s}s`; return `${s}s`; }
     function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-
-    // navigation
+    
+    function applyFilterAndRender() { renderFilteredGraph(); }
+    
     function switchScreen(screenId) {
         document.querySelectorAll('.app-screen').forEach(s => s.classList.remove('active-screen'));
         document.getElementById(`${screenId}Screen`).classList.add('active-screen');
@@ -715,20 +797,17 @@
         if (screenId === 'analysis') renderFilteredGraph();
         if (screenId === 'timer') updateTimerDisplayAndViews();
     }
-
-    // INIT
+    
+    // INIT with persistent timer
     function init() {
         loadData();
+        loadTimerFromStorage();   // restores timerSeconds + running state across sessions
         renderSubjectsList();
-        timerSeconds = 0;
         updateTimerDisplayAndViews();
-        isTimerRunning = false;
-        timerInterval = null;
-        localStorage.setItem("timer_last_day", getTodayKey());
         
-        // setup event listeners
         document.getElementById("addSubjectHomeBtn").addEventListener("click", addSubject);
         document.getElementById("startTimerBtn").addEventListener("click", () => startTimer());
+        document.getElementById("stopTimerBtn").addEventListener("click", () => stopAndSaveTimer());
         document.getElementById("applyFilterBtn").addEventListener("click", applyCustomFilter);
         document.getElementById("resetFilterBtn").addEventListener("click", resetFilter);
         
@@ -736,7 +815,15 @@
         document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
         document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.addEventListener('click', (e) => setQuickFilter(btn.dataset.filter)));
         
-        window.addEventListener('beforeunload', () => { if(timerSeconds>0) flushTimerToLog(timerSeconds); });
+        window.addEventListener('beforeunload', () => {
+            if (timerSeconds > 0) flushCurrentTimerToLog();
+            persistTimerState();
+        });
+        
+        // also persist logs periodically every 30 seconds for extra safety
+        setInterval(() => {
+            if (timerSeconds > 0) persistTimerState();
+        }, 10000);
         
         changeTimerModel("digital");
         setQuickFilter("all");
