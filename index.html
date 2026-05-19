@@ -1,0 +1,749 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <title>StudyDuo · Smart Study Suite</title>
+    <!-- Font Awesome & Chart.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, Roboto, Helvetica, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(145deg, #f1f5fc 0%, #e2e8f2 100%);
+            min-height: 100vh;
+            padding-bottom: 72px;
+        }
+
+        .app-screen {
+            display: none;
+            max-width: 550px;
+            margin: 0 auto;
+            padding: 20px 16px 30px;
+            animation: fadeSlide 0.2s ease-out;
+        }
+
+        .active-screen {
+            display: block;
+        }
+
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(6px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+
+        .card {
+            background: rgba(255,255,255,0.98);
+            border-radius: 1.8rem;
+            padding: 1.3rem 1.2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #1a2a4f, #2c3e7a);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 1rem;
+        }
+
+        /* header with logo */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.2rem;
+            background: white;
+            padding: 12px 18px;
+            border-radius: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon {
+            background: linear-gradient(135deg, #1f2b4e, #2d3e7c);
+            width: 42px;
+            height: 42px;
+            border-radius: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.4rem;
+        }
+        .logo-text {
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #1a2a4f, #2c3e7a);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+        .tag {
+            font-size: 0.7rem;
+            background: #eef2ff;
+            padding: 4px 10px;
+            border-radius: 40px;
+            color: #2c3e66;
+        }
+
+        .flex-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .input-group {
+            flex: 1;
+            min-width: 130px;
+        }
+        .input-group label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #4a5b79;
+        }
+        input, button {
+            border: none;
+            outline: none;
+            border-radius: 2rem;
+            padding: 12px 16px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        input {
+            background: #f2f5fc;
+            border: 1px solid #dee4ef;
+            width: 100%;
+        }
+        input:focus {
+            border-color: #3b4e8c;
+            background: white;
+        }
+        button {
+            background: #1f2b4e;
+            color: white;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            transition: 0.2s;
+        }
+        button:active { transform: scale(0.96);}
+        .btn-outline {
+            background: #eef2fa;
+            color: #1f2b4e;
+            border: 1px solid #cdd9f0;
+        }
+
+        /* subject items */
+        .subject-item {
+            background: white;
+            border-radius: 1.4rem;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #e9edf4;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .subject-info { flex: 2; }
+        .subject-name { font-weight: 800; font-size: 1rem; }
+        .badge-days {
+            background: #eef2ff;
+            padding: 4px 10px;
+            border-radius: 40px;
+            font-size: 0.7rem;
+            margin-left: 8px;
+        }
+        .progress-percent { font-size: 0.75rem; color: #2c3e66; margin-top: 6px; }
+        .popup-trigger, .delete-subj-btn {
+            border-radius: 40px;
+            padding: 6px 14px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .popup-trigger { background: #1f2b4e0c; }
+        .delete-subj-btn { background: #fff0f0; color: #c7362b; }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            background: white;
+            border-radius: 2rem;
+            width: 85%;
+            max-width: 360px;
+            padding: 1.5rem;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .checkbox-list { display: flex; flex-direction: column; gap: 12px; margin: 1rem 0; }
+        .day-check-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #f8fafd;
+            padding: 8px 12px;
+            border-radius: 60px;
+        }
+
+        /* TIMER MODELS */
+        .timer-model-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .model-btn {
+            background: #eef2fa;
+            color: #1f2b4e;
+            padding: 8px 14px;
+            font-size: 0.75rem;
+            border-radius: 40px;
+        }
+        .model-btn.active-model {
+            background: #1f2b4e;
+            color: white;
+        }
+        .timer-visual-container {
+            background: #0f172f;
+            border-radius: 2rem;
+            padding: 1.5rem 1rem;
+            margin: 1rem 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 240px;
+        }
+        .circle-timer { position: relative; width: 180px; height: 180px; }
+        .circle-svg { transform: rotate(-90deg); }
+        .circle-bg { stroke: #2a3457; stroke-width: 8; fill: none; }
+        .circle-progress { stroke: #5dc9ff; stroke-width: 8; fill: none; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
+        .circle-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.2rem; font-weight: bold; font-family: monospace; text-align: center; }
+        .bar-timer { width: 80%; text-align: center; }
+        .bar-bg { background: #2a3457; border-radius: 60px; height: 32px; overflow: hidden; }
+        .bar-fill { background: linear-gradient(90deg, #5dc9ff, #9b59b6); width: 0%; height: 100%; border-radius: 60px; transition: width 0.1s linear; }
+        .bar-digits { font-size: 2rem; font-weight: bold; font-family: monospace; color: white; margin-top: 12px; }
+        .digital-timer { text-align: center; }
+        .digital-digits { font-size: 2.8rem; font-weight: 800; font-family: monospace; letter-spacing: 4px; color: #b9f3ff; }
+        .timer-click-hint { font-size: 0.7rem; color: #9aa9c7; margin-top: 8px; }
+        .timer-box-click { cursor: pointer; }
+
+        /* bottom dashboard */
+        .bottom-dash {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 16px 22px;
+            z-index: 200;
+        }
+        .nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: transparent;
+            border: none;
+            color: #6c7e9e;
+            font-size: 0.7rem;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 4px 12px;
+            border-radius: 40px;
+        }
+        .nav-btn i { font-size: 1.6rem; }
+        .nav-btn.active { color: #1f2b4e; background: #eef3ff; font-weight: 700; }
+
+        /* analysis filter - enhanced */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        .quick-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .quick-filter-btn {
+            background: #eef2fa;
+            color: #1f2b4e;
+            padding: 6px 14px;
+            font-size: 0.7rem;
+            border-radius: 40px;
+        }
+        .quick-filter-btn.active {
+            background: #1f2b4e;
+            color: white;
+        }
+        .stat-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .stat-card {
+            background: linear-gradient(145deg, #ffffff, #f3f7fe);
+            flex: 1;
+            border-radius: 1.2rem;
+            padding: 12px;
+            text-align: center;
+        }
+        canvas { max-height: 200px; width: 100%; }
+        .footnote { font-size: 0.7rem; color: #6c7d9e; text-align: center; margin-top: 10px; }
+        .empty-list { text-align: center; padding: 30px; color: #7c8aa8; }
+    </style>
+</head>
+<body>
+
+<!-- MODAL for days checklist -->
+<div id="dayModal" class="modal">
+    <div class="modal-card">
+        <h3 id="modalTitle">✅ Mark completed days</h3>
+        <div id="modalCheckboxList" class="checkbox-list"></div>
+        <button class="close-modal-btn" style="width:100%; background:#eef2fa; color:#1f2b4e; padding:10px; border-radius:40px;" onclick="closeDayModal()">Done</button>
+    </div>
+</div>
+
+<!-- HOME SCREEN -->
+<div id="homeScreen" class="app-screen active-screen">
+    <div class="app-header">
+        <div class="logo-area">
+            <div class="logo-icon"><i class="fas fa-graduation-cap"></i></div>
+            <div class="logo-text">StudyDuo</div>
+        </div>
+        <div class="tag"><i class="fas fa-brain"></i> Focus & Grow</div>
+    </div>
+    <div class="card">
+        <h2><i class="fas fa-plus-circle"></i> Add subject</h2>
+        <div class="flex-row">
+            <div class="input-group">
+                <label>📖 Subject name</label>
+                <input type="text" id="subjectNameInput" placeholder="Mathematics, Science..." autocomplete="off">
+            </div>
+            <div class="input-group">
+                <label>⏳ Days needed</label>
+                <input type="number" id="daysNeededInput" min="1" value="10">
+            </div>
+            <button id="addSubjectHomeBtn"><i class="fas fa-plus"></i> Add</button>
+        </div>
+    </div>
+    <div class="card">
+        <h2><i class="fas fa-tasks"></i> Your subjects</h2>
+        <div id="subjectsListContainer">✨ No subjects — tap + to start</div>
+    </div>
+</div>
+
+<!-- TIMER SCREEN (with model selector) -->
+<div id="timerScreen" class="app-screen">
+    <div class="card" style="text-align: center;">
+        <h2><i class="fas fa-stopwatch"></i> Smart Timer</h2>
+        <div class="timer-model-selector">
+            <button class="model-btn" data-model="digital"><i class="fas fa-clock"></i> Digital</button>
+            <button class="model-btn" data-model="circle"><i class="fas fa-circle"></i> Circle</button>
+            <button class="model-btn" data-model="bar"><i class="fas fa-chart-simple"></i> Bar</button>
+        </div>
+        <div id="timerVisualArea" class="timer-visual-container"></div>
+        <div style="display: flex; justify-content: center; gap: 12px; margin-top: 5px;">
+            <button id="startTimerBtn"><i class="fas fa-play"></i> Start / Resume</button>
+        </div>
+        <div class="footnote">⏰ Tap timer to pause/resume • auto-saves at midnight</div>
+    </div>
+</div>
+
+<!-- ANALYSIS SCREEN with enhanced filters -->
+<div id="analysisScreen" class="app-screen">
+    <div class="card">
+        <h2><i class="fas fa-chart-line"></i> Study analytics</h2>
+        
+        <!-- Quick filter buttons: Last Week, Last Month, Full Year, All Time -->
+        <div class="quick-filters">
+            <button class="quick-filter-btn" data-filter="week"><i class="fas fa-calendar-week"></i> Last Week</button>
+            <button class="quick-filter-btn" data-filter="month"><i class="fas fa-calendar-alt"></i> Last Month</button>
+            <button class="quick-filter-btn" data-filter="year"><i class="fas fa-calendar-year"></i> Full Year</button>
+            <button class="quick-filter-btn" data-filter="all"><i class="fas fa-infinity"></i> All Time</button>
+        </div>
+        
+        <!-- Custom date range picker -->
+        <div class="filter-bar">
+            <input type="date" id="filterStartDate" placeholder="Start date">
+            <input type="date" id="filterEndDate" placeholder="End date">
+            <button id="applyFilterBtn"><i class="fas fa-filter"></i> Apply</button>
+            <button id="resetFilterBtn" class="btn-outline"><i class="fas fa-undo-alt"></i> Reset</button>
+        </div>
+        
+        <div class="stat-row">
+            <div class="stat-card"><i class="fas fa-chart-simple"></i> <div id="totalStudyFiltered">0s</div><small>Total (filtered)</small></div>
+            <div class="stat-card"><i class="fas fa-trophy"></i> <div id="bestDayFiltered">—</div><small>Best day</small></div>
+        </div>
+        <canvas id="studyGraphCanvas" width="400" height="190"></canvas>
+        <div class="footnote">📅 Quick filters or pick custom range • bar chart shows daily seconds</div>
+    </div>
+</div>
+
+<!-- BOTTOM DASHBOARD -->
+<div class="bottom-dash">
+    <button class="nav-btn" data-screen="home"><i class="fas fa-home"></i><span>Home</span></button>
+    <button class="nav-btn" data-screen="timer"><i class="fas fa-stopwatch"></i><span>Timer</span></button>
+    <button class="nav-btn" data-screen="analysis"><i class="fas fa-chart-bar"></i><span>Analysis</span></button>
+</div>
+
+<script>
+    // ---------- DATA ----------
+    let subjects = [];
+    let dailyLogs = {};
+    let timerSeconds = 0;
+    let timerInterval = null;
+    let isTimerRunning = false;
+    let currentModalSubjectId = null;
+    let chartInstance = null;
+    let currentTimerModel = "digital";
+
+    // storage keys
+    const STORAGE_SUBJECTS = "StudyDuo_subjects_v5";
+    const STORAGE_LOGS = "StudyDuo_dailyLogs_v5";
+
+    function loadData() {
+        const storedSubjects = localStorage.getItem(STORAGE_SUBJECTS);
+        if (storedSubjects) {
+            subjects = JSON.parse(storedSubjects);
+            subjects.forEach(s => {
+                if (!s.completedDays || !Array.isArray(s.completedDays)) {
+                    s.completedDays = new Array(s.daysNeeded).fill(false);
+                } else if (s.completedDays.length !== s.daysNeeded) {
+                    let newArr = new Array(s.daysNeeded).fill(false);
+                    for(let i=0; i<Math.min(s.completedDays.length, s.daysNeeded); i++) newArr[i] = s.completedDays[i];
+                    s.completedDays = newArr;
+                }
+            });
+        } else subjects = [];
+        const storedLogs = localStorage.getItem(STORAGE_LOGS);
+        if (storedLogs) dailyLogs = JSON.parse(storedLogs);
+        else dailyLogs = {};
+    }
+    function saveSubjects() { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify(subjects)); }
+    function saveLogs() { localStorage.setItem(STORAGE_LOGS, JSON.stringify(dailyLogs)); }
+
+    function getTodayKey() {
+        const d = new Date();
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+    }
+
+    function flushTimerToLog(secondsToAdd = null) {
+        let secs = (secondsToAdd !== null) ? secondsToAdd : timerSeconds;
+        if (secs <= 0) return;
+        const today = getTodayKey();
+        if (!dailyLogs[today]) dailyLogs[today] = 0;
+        dailyLogs[today] += secs;
+        saveLogs();
+        if (document.getElementById("analysisScreen").classList.contains("active-screen")) applyFilterAndRender();
+    }
+
+    // TIMER CORE
+    function updateTimerDisplayAndViews() {
+        const hrs = Math.floor(timerSeconds / 3600);
+        const mins = Math.floor((timerSeconds % 3600) / 60);
+        const secs = timerSeconds % 60;
+        const timeStr = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+        const totalSecs = timerSeconds;
+        const maxTotalSecs = 24*3600;
+        const percent = Math.min(100, (totalSecs / maxTotalSecs) * 100);
+        
+        if (currentTimerModel === 'digital') {
+            const container = document.getElementById("timerVisualArea");
+            if (container) {
+                container.innerHTML = `<div class="digital-timer timer-box-click" id="timerClickRoot"><div class="digital-digits">${timeStr}</div><div class="timer-click-hint"><i class="fas fa-hand-pointer"></i> Tap to pause/resume</div></div>`;
+                attachTimerClick();
+            }
+        } else if (currentTimerModel === 'circle') {
+            const radius = 75;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (percent / 100) * circumference;
+            const container = document.getElementById("timerVisualArea");
+            container.innerHTML = `
+                <div class="circle-timer timer-box-click" id="timerClickRoot">
+                    <svg class="circle-svg" width="180" height="180" viewBox="0 0 180 180">
+                        <circle class="circle-bg" cx="90" cy="90" r="${radius}" stroke-width="8" fill="none"/>
+                        <circle class="circle-progress" cx="90" cy="90" r="${radius}" stroke-width="8" fill="none" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"/>
+                    </svg>
+                    <div class="circle-text">${timeStr}</div>
+                </div>`;
+            attachTimerClick();
+        } else if (currentTimerModel === 'bar') {
+            const container = document.getElementById("timerVisualArea");
+            container.innerHTML = `
+                <div class="bar-timer timer-box-click" id="timerClickRoot">
+                    <div class="bar-bg"><div class="bar-fill" style="width: ${percent}%;"></div></div>
+                    <div class="bar-digits">${timeStr}</div>
+                    <div class="timer-click-hint">Tap to pause/resume</div>
+                </div>`;
+            attachTimerClick();
+        }
+    }
+    
+    function attachTimerClick() {
+        const el = document.getElementById("timerClickRoot");
+        if (el) el.addEventListener("click", toggleTimerPause);
+    }
+
+    function startTimer() {
+        if (timerInterval && isTimerRunning) return;
+        if (timerInterval && !isTimerRunning) { isTimerRunning = true; return; }
+        isTimerRunning = true;
+        timerInterval = setInterval(() => {
+            if (isTimerRunning) {
+                timerSeconds++;
+                updateTimerDisplayAndViews();
+                const lastTrack = localStorage.getItem("timer_last_day");
+                const nowDay = getTodayKey();
+                if (lastTrack && lastTrack !== nowDay && timerSeconds > 0) {
+                    flushTimerToLog(timerSeconds);
+                    timerSeconds = 0;
+                    updateTimerDisplayAndViews();
+                    localStorage.setItem("timer_last_day", nowDay);
+                } else if (!lastTrack) localStorage.setItem("timer_last_day", nowDay);
+            }
+        }, 1000);
+    }
+    function pauseTimer() { if (timerInterval && isTimerRunning) isTimerRunning = false; }
+    function toggleTimerPause() {
+        if (!timerInterval) startTimer();
+        else if (isTimerRunning) pauseTimer();
+        else startTimer();
+    }
+    function changeTimerModel(model) {
+        currentTimerModel = model;
+        document.querySelectorAll('.model-btn').forEach(btn => btn.classList.remove('active-model'));
+        document.querySelector(`.model-btn[data-model="${model}"]`).classList.add('active-model');
+        updateTimerDisplayAndViews();
+    }
+
+    // SUBJECTS & MODAL
+    function renderSubjectsList() {
+        const container = document.getElementById("subjectsListContainer");
+        if (!subjects.length) { container.innerHTML = `<div class="empty-list"><i class="fas fa-book-open"></i><br/>Add a subject to track progress</div>`; return; }
+        let html = "";
+        subjects.forEach(sub => {
+            const completedCount = sub.completedDays.filter(v => v === true).length;
+            const percent = (completedCount / sub.daysNeeded) * 100;
+            html += `<div class="subject-item">
+                <div class="subject-info"><div class="subject-name">${escapeHtml(sub.name)} <span class="badge-days">${completedCount}/${sub.daysNeeded} days</span></div>
+                <div class="progress-percent">📊 ${percent.toFixed(0)}% completed</div></div>
+                <div style="display:flex; gap:8px;"><button class="popup-trigger" data-id="${sub.id}"><i class="fas fa-check-double"></i> Mark days</button>
+                <button class="delete-subj-btn" data-id="${sub.id}"><i class="fas fa-trash-alt"></i></button></div></div>`;
+        });
+        container.innerHTML = html;
+        document.querySelectorAll('.popup-trigger').forEach(btn => btn.addEventListener('click', (e) => openDayModal(parseInt(btn.dataset.id))));
+        document.querySelectorAll('.delete-subj-btn').forEach(btn => btn.addEventListener('click', (e) => { if(confirm("Delete subject?")) { subjects = subjects.filter(s => s.id !== parseInt(btn.dataset.id)); saveSubjects(); renderSubjectsList(); } }));
+    }
+    function openDayModal(subjectId) {
+        const subject = subjects.find(s => s.id === subjectId);
+        if (!subject) return;
+        currentModalSubjectId = subjectId;
+        document.getElementById("modalTitle").innerHTML = `✅ ${escapeHtml(subject.name)} — mark days`;
+        let checkHtml = "";
+        for (let i=0; i<subject.daysNeeded; i++) {
+            const checked = subject.completedDays[i] || false;
+            checkHtml += `<div class="day-check-item"><input type="checkbox" id="day_${i}" data-dayidx="${i}" ${checked ? "checked" : ""}><label>Day ${i+1}</label></div>`;
+        }
+        document.getElementById("modalCheckboxList").innerHTML = checkHtml;
+        document.querySelectorAll('#modalCheckboxList input').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const dayIdx = parseInt(cb.dataset.dayidx);
+                const subj = subjects.find(s => s.id === subjectId);
+                if (subj) { subj.completedDays[dayIdx] = cb.checked; saveSubjects(); renderSubjectsList(); }
+            });
+        });
+        document.getElementById("dayModal").style.display = "flex";
+    }
+    function closeDayModal() { document.getElementById("dayModal").style.display = "none"; renderSubjectsList(); }
+    function addSubject() {
+        const name = document.getElementById("subjectNameInput").value.trim();
+        let days = parseInt(document.getElementById("daysNeededInput").value, 10);
+        if (!name) { alert("Enter subject name"); return; }
+        if (isNaN(days) || days < 1) days = 1;
+        subjects.push({ id: Date.now(), name: name, daysNeeded: days, completedDays: new Array(days).fill(false) });
+        saveSubjects(); renderSubjectsList();
+        document.getElementById("subjectNameInput").value = "";
+        document.getElementById("daysNeededInput").value = "10";
+    }
+
+    // ANALYSIS FILTER with quick filters
+    let currentStartDate = null, currentEndDate = null;
+    let activeQuickFilter = "all";
+    
+    function setQuickFilter(filter) {
+        activeQuickFilter = filter;
+        const today = new Date();
+        let start = null;
+        let end = new Date();
+        end.setUTCHours(23,59,59);
+        const endStr = end.toISOString().split('T')[0];
+        
+        if (filter === "week") {
+            let startDate = new Date();
+            startDate.setDate(today.getDate() - 7);
+            start = startDate.toISOString().split('T')[0];
+        } else if (filter === "month") {
+            let startDate = new Date();
+            startDate.setMonth(today.getMonth() - 1);
+            start = startDate.toISOString().split('T')[0];
+        } else if (filter === "year") {
+            start = `${today.getFullYear()}-01-01`;
+        } else {
+            start = null;
+        }
+        
+        currentStartDate = start;
+        currentEndDate = (filter !== "all") ? endStr : null;
+        
+        // update input fields
+        document.getElementById("filterStartDate").value = currentStartDate || "";
+        document.getElementById("filterEndDate").value = currentEndDate || "";
+        
+        // update active class on quick buttons
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`.quick-filter-btn[data-filter="${filter}"]`).classList.add('active');
+        
+        renderFilteredGraph();
+    }
+    
+    function getFilteredLogs() {
+        let filtered = { ...dailyLogs };
+        if (currentStartDate) {
+            filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date >= currentStartDate));
+        }
+        if (currentEndDate) {
+            filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date <= currentEndDate));
+        }
+        return filtered;
+    }
+    
+    function renderFilteredGraph() {
+        const filtered = getFilteredLogs();
+        let dates = Object.keys(filtered).sort();
+        if (dates.length === 0) {
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById("studyGraphCanvas").getContext("2d");
+            chartInstance = new Chart(ctx, { type: 'bar', data: { labels: ['No data'], datasets: [{ label: 'Study seconds', data: [0], backgroundColor: '#aaa' }] } });
+            document.getElementById("totalStudyFiltered").innerText = "0s";
+            document.getElementById("bestDayFiltered").innerHTML = "—";
+            return;
+        }
+        const durations = dates.map(d => filtered[d]);
+        const totalSec = durations.reduce((a,b)=>a+b,0);
+        const maxSec = Math.max(...durations);
+        const maxDate = dates[durations.indexOf(maxSec)];
+        document.getElementById("totalStudyFiltered").innerText = formatDuration(totalSec);
+        document.getElementById("bestDayFiltered").innerHTML = maxSec > 0 ? `${formatDuration(maxSec)}<br><small>${maxDate}</small>` : "—";
+        const labels = dates.map(d => d.slice(5));
+        if (chartInstance) chartInstance.destroy();
+        const ctx = document.getElementById("studyGraphCanvas").getContext("2d");
+        chartInstance = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Study seconds', data: durations, backgroundColor: '#3b4e8c', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { callbacks: { label: (ctx) => formatDuration(ctx.raw) } } } } });
+    }
+    
+    function applyCustomFilter() {
+        const start = document.getElementById("filterStartDate").value;
+        const end = document.getElementById("filterEndDate").value;
+        currentStartDate = start || null;
+        currentEndDate = end || null;
+        // deactivate quick filter buttons
+        activeQuickFilter = null;
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
+        renderFilteredGraph();
+    }
+    
+    function resetFilter() {
+        document.getElementById("filterStartDate").value = "";
+        document.getElementById("filterEndDate").value = "";
+        currentStartDate = null;
+        currentEndDate = null;
+        activeQuickFilter = "all";
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`.quick-filter-btn[data-filter="all"]`).classList.add('active');
+        renderFilteredGraph();
+    }
+    
+    function formatDuration(sec) { if(!sec) return "0s"; let h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; if(h>0) return `${h}h ${m}m`; if(m>0) return `${m}m ${s}s`; return `${s}s`; }
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    // navigation
+    function switchScreen(screenId) {
+        document.querySelectorAll('.app-screen').forEach(s => s.classList.remove('active-screen'));
+        document.getElementById(`${screenId}Screen`).classList.add('active-screen');
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        const activeNav = Array.from(document.querySelectorAll('.nav-btn')).find(btn => btn.dataset.screen === screenId);
+        if (activeNav) activeNav.classList.add('active');
+        if (screenId === 'home') renderSubjectsList();
+        if (screenId === 'analysis') renderFilteredGraph();
+        if (screenId === 'timer') updateTimerDisplayAndViews();
+    }
+
+    // INIT
+    function init() {
+        loadData();
+        renderSubjectsList();
+        timerSeconds = 0;
+        updateTimerDisplayAndViews();
+        isTimerRunning = false;
+        timerInterval = null;
+        localStorage.setItem("timer_last_day", getTodayKey());
+        
+        // setup event listeners
+        document.getElementById("addSubjectHomeBtn").addEventListener("click", addSubject);
+        document.getElementById("startTimerBtn").addEventListener("click", () => startTimer());
+        document.getElementById("applyFilterBtn").addEventListener("click", applyCustomFilter);
+        document.getElementById("resetFilterBtn").addEventListener("click", resetFilter);
+        
+        document.querySelectorAll('.model-btn').forEach(btn => btn.addEventListener('click', (e) => changeTimerModel(btn.dataset.model)));
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.addEventListener('click', (e) => setQuickFilter(btn.dataset.filter)));
+        
+        window.addEventListener('beforeunload', () => { if(timerSeconds>0) flushTimerToLog(timerSeconds); });
+        
+        changeTimerModel("digital");
+        setQuickFilter("all");
+        switchScreen('home');
+    }
+    init();
+</script>
+</body>
+</html>
+```
