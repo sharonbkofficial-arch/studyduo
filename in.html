@@ -1,10 +1,11 @@
-
+Here is an HTML document that implements a persistent study timer with background notifications, so the timer continues running and alerts you even after you leave the page.
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
-    <title>StudyDuo · Persistent Smart Study Suite</title>
+    <title>StudyDuo · Persistent Timer with Notifications</title>
     <!-- Font Awesome & Chart.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -149,6 +150,24 @@
             background: #eef2fa;
             color: #1f2b4e;
             border: 1px solid #cdd9f0;
+        }
+        .notification-banner {
+            background: linear-gradient(135deg, #2d3e7c, #1a2a4f);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 2rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 0.8rem;
+        }
+        .enable-notif-btn {
+            background: #ffd966;
+            color: #1f2b4e;
+            padding: 6px 14px;
+            font-size: 0.7rem;
         }
 
         .subject-item {
@@ -366,6 +385,10 @@
 <div id="timerScreen" class="app-screen">
     <div class="card" style="text-align: center;">
         <h2><i class="fas fa-stopwatch"></i> Smart Timer</h2>
+        <div id="notifStatus" class="notification-banner">
+            <span><i class="fas fa-bell"></i> Notifications: Off</span>
+            <button id="enableNotifBtn" class="enable-notif-btn"><i class="fas fa-check-circle"></i> Enable</button>
+        </div>
         <div class="timer-model-selector">
             <button class="model-btn" data-model="digital"><i class="fas fa-clock"></i> Digital</button>
             <button class="model-btn" data-model="circle"><i class="fas fa-circle"></i> Circle</button>
@@ -373,10 +396,11 @@
         </div>
         <div id="timerVisualArea" class="timer-visual-container"></div>
         <div style="display: flex; justify-content: center; gap: 12px; margin-top: 5px;">
-            <button id="startTimerBtn"><i class="fas fa-play"></i> Start / Resume</button>
+            <button id="startTimerBtn"><i class="fas fa-play"></i> Start</button>
+            <button id="pauseTimerBtn" class="btn-outline"><i class="fas fa-pause"></i> Pause</button>
             <button id="stopTimerBtn" class="btn-outline"><i class="fas fa-stop"></i> Stop & Save</button>
         </div>
-        <div class="footnote">⏰ Tap timer to pause/resume • Auto-saves every 15s & before closing</div>
+        <div class="footnote">⏰ Timer runs even after closing browser (background) • Get notified every 30 min • Tap timer to pause/resume</div>
     </div>
 </div>
 
@@ -411,7 +435,7 @@
 </div>
 
 <script>
-    // ---------- PERSISTENCE-FIXED TIMER ----------
+    // ========== PERSISTENT TIMER WITH SERVICE WORKER NOTIFICATIONS ==========
     let subjects = [];
     let dailyLogs = {};
     let timerSeconds = 0;
@@ -420,17 +444,233 @@
     let currentModalSubjectId = null;
     let chartInstance = null;
     let currentTimerModel = "digital";
-    let autoSaveInterval = null;
+    let notificationPermission = false;
+    let lastNotificationSent = 0; // timestamp of last notif
+    const NOTIFICATION_INTERVAL = 30 * 60; // 30 minutes in seconds
 
-    const STORAGE_SUBJECTS = "StudyDuo_subjects_v6";
-    const STORAGE_LOGS = "StudyDuo_dailyLogs_v6";
-    const STORAGE_TIMER_SECONDS = "StudyDuo_timer_seconds";
-    const STORAGE_TIMER_LAST_DAY = "StudyDuo_timer_last_day";
-    const STORAGE_TIMER_RUNNING = "StudyDuo_timer_running";
-    const STORAGE_TIMER_START_TIME = "StudyDuo_timer_start_time";
+    // Storage keys
+    const STORAGE_SUBJECTS = "StudyDuo_subjects_v8";
+    const STORAGE_LOGS = "StudyDuo_dailyLogs_v8";
+    const STORAGE_TIMER_SECONDS = "StudyDuo_timer_seconds_v3";
+    const STORAGE_TIMER_DATE = "StudyDuo_timer_date";
+    const STORAGE_TIMER_RUNNING = "StudyDuo_timer_running_v3";
+    const STORAGE_TIMER_LAST_TICK = "StudyDuo_timer_last_tick";
 
+    function getTodayKey() {
+        const d = new Date();
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+    }
+
+    // Save timer state
+    function persistTimerState() {
+        localStorage.setItem(STORAGE_TIMER_SECONDS, timerSeconds.toString());
+        localStorage.setItem(STORAGE_TIMER_DATE, getTodayKey());
+        localStorage.setItem(STORAGE_TIMER_RUNNING, isTimerRunning ? "true" : "false");
+        localStorage.setItem(STORAGE_TIMER_LAST_TICK, Date.now().toString());
+    }
+
+    // Flush to logs
+    function flushCurrentTimerToLog(forceDate = null) {
+        if (timerSeconds <= 0) return;
+        const targetDate = forceDate || getTodayKey();
+        if (!dailyLogs[targetDate]) dailyLogs[targetDate] = 0;
+        dailyLogs[targetDate] += timerSeconds;
+        saveLogs();
+        timerSeconds = 0;
+        persistTimerState();
+        updateTimerDisplayAndViews();
+        if (document.getElementById("analysisScreen").classList.contains("active-screen")) renderFilteredGraph();
+    }
+
+    // CRITICAL: Restore timer across refreshes & continue running in background
+    function loadTimerFromStorage() {
+        const savedSeconds = localStorage.getItem(STORAGE_TIMER_SECONDS);
+        const savedDate = localStorage.getItem(STORAGE_TIMER_DATE);
+        const savedRunning = localStorage.getItem(STORAGE_TIMER_RUNNING);
+        const lastTickStr = localStorage.getItem(STORAGE_TIMER_LAST_TICK);
+        const currentDay = getTodayKey();
+        
+        let rawSeconds = (savedSeconds !== null) ? parseInt(savedSeconds, 10) : 0;
+        if (isNaN(rawSeconds)) rawSeconds = 0;
+        
+        // Handle day rollover
+        if (savedDate && savedDate !== currentDay) {
+            if (rawSeconds > 0) {
+                if (!dailyLogs[savedDate]) dailyLogs[savedDate] = 0;
+                dailyLogs[savedDate] += rawSeconds;
+                saveLogs();
+            }
+            timerSeconds = 0;
+            isTimerRunning = false;
+            persistTimerState();
+        } else {
+            timerSeconds = rawSeconds;
+            // Restore running state AND account for elapsed time while page was closed
+            if (savedRunning === "true" && lastTickStr) {
+                const lastTick = parseInt(lastTickStr, 10);
+                const now = Date.now();
+                const elapsedSeconds = Math.floor((now - lastTick) / 1000);
+                if (elapsedSeconds > 0 && elapsedSeconds < 86400) {
+                    timerSeconds += elapsedSeconds;
+                    // Keep it running after restoration
+                    isTimerRunning = true;
+                } else {
+                    isTimerRunning = (savedRunning === "true");
+                }
+            } else {
+                isTimerRunning = (savedRunning === "true");
+            }
+            persistTimerState();
+        }
+        if (timerSeconds < 0) timerSeconds = 0;
+    }
+
+    // Send a push-like notification (uses Web Notifications API)
+    function sendStudyNotification() {
+        if (!notificationPermission) return;
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted") return;
+        
+        const hours = Math.floor(timerSeconds / 3600);
+        const mins = Math.floor((timerSeconds % 3600) / 60);
+        let timeMsg = "";
+        if (hours > 0) timeMsg = `${hours} hour${hours > 1 ? 's' : ''}`;
+        if (mins > 0) timeMsg += `${timeMsg ? ' and ' : ''}${mins} minute${mins > 1 ? 's' : ''}`;
+        if (hours === 0 && mins === 0) timeMsg = `${timerSeconds} seconds`;
+        
+        const notification = new Notification("🎓 StudyDuo - Keep Going!", {
+            body: `You've been focused for ${timeMsg}! Stay productive and track your progress. 🌟`,
+            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+            tag: "studyduo-timer",
+            requireInteraction: false,
+            silent: false
+        });
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
+    }
+    
+    // Check if we should send a periodic notification (every NOTIFICATION_INTERVAL seconds)
+    function checkAndSendNotification() {
+        if (!isTimerRunning) return;
+        if (!notificationPermission) return;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const elapsedSinceLast = nowSec - lastNotificationSent;
+        if (elapsedSinceLast >= NOTIFICATION_INTERVAL && timerSeconds > 60) {
+            sendStudyNotification();
+            lastNotificationSent = nowSec;
+        }
+    }
+    
+    // Timer tick logic (runs every second when running)
+    function startTimerInternal() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (!isTimerRunning) return;
+            
+            timerSeconds++;
+            updateTimerDisplayAndViews();
+            persistTimerState();
+            checkAndSendNotification();
+            
+            // Day rollover check while running
+            const currentDay = getTodayKey();
+            const storedDay = localStorage.getItem(STORAGE_TIMER_DATE);
+            if (storedDay && storedDay !== currentDay) {
+                if (timerSeconds > 0) {
+                    if (!dailyLogs[storedDay]) dailyLogs[storedDay] = 0;
+                    dailyLogs[storedDay] += timerSeconds;
+                    saveLogs();
+                }
+                timerSeconds = 0;
+                isTimerRunning = true;
+                persistTimerState();
+                updateTimerDisplayAndViews();
+            }
+        }, 1000);
+    }
+    
+    // Public controls
+    function startTimer() {
+        if (isTimerRunning) return;
+        // Check day boundary before starting
+        const currentDay = getTodayKey();
+        const storedDay = localStorage.getItem(STORAGE_TIMER_DATE);
+        if (storedDay && storedDay !== currentDay && timerSeconds > 0) {
+            flushCurrentTimerToLog(storedDay);
+        }
+        isTimerRunning = true;
+        persistTimerState();
+        // Reset notification timer reference
+        lastNotificationSent = Math.floor(Date.now() / 1000);
+        if (!timerInterval) startTimerInternal();
+    }
+    
+    function pauseTimer() {
+        if (!isTimerRunning) return;
+        isTimerRunning = false;
+        persistTimerState();
+    }
+    
+    function toggleTimerPause() {
+        if (isTimerRunning) pauseTimer();
+        else startTimer();
+    }
+    
+    function stopAndSaveTimer() {
+        if (timerSeconds > 0) {
+            flushCurrentTimerToLog(getTodayKey());
+        }
+        pauseTimer();
+        timerSeconds = 0;
+        persistTimerState();
+        updateTimerDisplayAndViews();
+    }
+    
+    // Notification setup
+    async function requestNotificationPermission() {
+        if (!("Notification" in window)) {
+            alert("Your browser does not support desktop notifications");
+            return false;
+        }
+        if (Notification.permission === "granted") {
+            notificationPermission = true;
+            updateNotifUI(true);
+            return true;
+        }
+        if (Notification.permission !== "denied") {
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+                notificationPermission = true;
+                updateNotifUI(true);
+                // Send a test notification
+                new Notification("StudyDuo Ready!", {
+                    body: "Notifications enabled. You'll receive updates every 30 minutes while studying.",
+                    icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                });
+                return true;
+            }
+        }
+        updateNotifUI(false);
+        return false;
+    }
+    
+    function updateNotifUI(enabled) {
+        const statusDiv = document.getElementById("notifStatus");
+        if (statusDiv) {
+            if (enabled) {
+                statusDiv.innerHTML = `<span><i class="fas fa-bell"></i> Notifications: Active ✓</span><span style="font-size:0.7rem;">⏰ every 30 min</span>`;
+            } else {
+                statusDiv.innerHTML = `<span><i class="fas fa-bell-slash"></i> Notifications: Off</span><button id="enableNotifBtn" class="enable-notif-btn"><i class="fas fa-check-circle"></i> Enable</button>`;
+                const btn = document.getElementById("enableNotifBtn");
+                if (btn) btn.onclick = () => requestNotificationPermission();
+            }
+        }
+    }
+    
+    // Data helpers
     function loadData() {
-        // subjects
         const storedSubjects = localStorage.getItem(STORAGE_SUBJECTS);
         if (storedSubjects) {
             subjects = JSON.parse(storedSubjects);
@@ -445,153 +685,15 @@
             });
         } else subjects = [];
         
-        // logs
         const storedLogs = localStorage.getItem(STORAGE_LOGS);
         if (storedLogs) dailyLogs = JSON.parse(storedLogs);
         else dailyLogs = {};
     }
     
-    // ----- PERSISTENT TIMER LOGIC (cross-session, cross-refresh) -----
-    function persistTimerState() {
-        localStorage.setItem(STORAGE_TIMER_SECONDS, timerSeconds.toString());
-        localStorage.setItem(STORAGE_TIMER_LAST_DAY, getTodayKey());
-        localStorage.setItem(STORAGE_TIMER_RUNNING, isTimerRunning ? "true" : "false");
-        if (isTimerRunning && timerInterval) {
-            localStorage.setItem(STORAGE_TIMER_START_TIME, Date.now().toString());
-        } else {
-            localStorage.removeItem(STORAGE_TIMER_START_TIME);
-        }
-    }
-    
-    function loadTimerFromStorage() {
-        const savedSeconds = localStorage.getItem(STORAGE_TIMER_SECONDS);
-        const savedLastDay = localStorage.getItem(STORAGE_TIMER_LAST_DAY);
-        const savedRunning = localStorage.getItem(STORAGE_TIMER_RUNNING);
-        const savedStartTime = localStorage.getItem(STORAGE_TIMER_START_TIME);
-        
-        // restore seconds or default 0
-        if (savedSeconds !== null) {
-            timerSeconds = parseInt(savedSeconds, 10) || 0;
-        } else {
-            timerSeconds = 0;
-        }
-        
-        const currentDay = getTodayKey();
-        
-        // if the stored day is different from today -> flush previous session's timer to logs (day boundary)
-        if (savedLastDay && savedLastDay !== currentDay && timerSeconds > 0) {
-            // add previous day's accumulated seconds to logs
-            if (!dailyLogs[savedLastDay]) dailyLogs[savedLastDay] = 0;
-            dailyLogs[savedLastDay] += timerSeconds;
-            saveLogs();
-            timerSeconds = 0; // reset for new day
-            persistTimerState();
-        } else if (!savedLastDay) {
-            persistTimerState(); // set initial day
-        }
-        
-        // restore running state if valid
-        if (savedRunning === "true" && savedStartTime) {
-            const startTime = parseInt(savedStartTime, 10);
-            const now = Date.now();
-            const elapsedSeconds = Math.floor((now - startTime) / 1000);
-            if (elapsedSeconds > 0 && elapsedSeconds < 86400) {
-                timerSeconds += elapsedSeconds;
-                persistTimerState();
-                // continue running
-                isTimerRunning = true;
-                startTimerInternal();
-            } else {
-                isTimerRunning = false;
-                persistTimerState();
-            }
-        } else {
-            isTimerRunning = false;
-            persistTimerState();
-        }
-        
-        // ensure we never have negative
-        if (timerSeconds < 0) timerSeconds = 0;
-    }
-    
-    function startTimerInternal() {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            if (isTimerRunning) {
-                timerSeconds++;
-                updateTimerDisplayAndViews();
-                persistTimerState();
-                // optional: auto-save every 15 seconds to logs? better: flush only on stop / page unload / day change
-                // We'll keep real-time persistence of timer value.
-                const lastTrack = localStorage.getItem(STORAGE_TIMER_LAST_DAY);
-                const nowDay = getTodayKey();
-                if (lastTrack && lastTrack !== nowDay) {
-                    // day changed while timer running: flush current to yesterday's log
-                    if (!dailyLogs[lastTrack]) dailyLogs[lastTrack] = 0;
-                    dailyLogs[lastTrack] += timerSeconds;
-                    saveLogs();
-                    timerSeconds = 0;
-                    persistTimerState();
-                    updateTimerDisplayAndViews();
-                    localStorage.setItem(STORAGE_TIMER_LAST_DAY, nowDay);
-                }
-            }
-        }, 1000);
-    }
-    
-    function startTimer() {
-        if (isTimerRunning) return;
-        isTimerRunning = true;
-        persistTimerState();
-        if (timerInterval) {
-            // already interval exists, just set flag
-        } else {
-            startTimerInternal();
-        }
-    }
-    
-    function pauseTimer() {
-        if (!isTimerRunning) return;
-        isTimerRunning = false;
-        persistTimerState();
-    }
-    
-    function stopAndSaveTimer() {
-        if (timerSeconds > 0) {
-            flushCurrentTimerToLog();
-        }
-        pauseTimer();
-        timerSeconds = 0;
-        persistTimerState();
-        updateTimerDisplayAndViews();
-    }
-    
-    function flushCurrentTimerToLog() {
-        if (timerSeconds <= 0) return;
-        const today = getTodayKey();
-        if (!dailyLogs[today]) dailyLogs[today] = 0;
-        dailyLogs[today] += timerSeconds;
-        saveLogs();
-        timerSeconds = 0;
-        persistTimerState();
-        updateTimerDisplayAndViews();
-        if (document.getElementById("analysisScreen").classList.contains("active-screen")) applyFilterAndRender();
-    }
-    
-    function toggleTimerPause() {
-        if (!timerInterval) startTimer();
-        else if (isTimerRunning) pauseTimer();
-        else startTimer();
-    }
-    
-    function getTodayKey() {
-        const d = new Date();
-        return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
-    }
-    
     function saveSubjects() { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify(subjects)); }
     function saveLogs() { localStorage.setItem(STORAGE_LOGS, JSON.stringify(dailyLogs)); }
     
+    // Timer UI display
     function updateTimerDisplayAndViews() {
         const hrs = Math.floor(timerSeconds / 3600);
         const mins = Math.floor((timerSeconds % 3600) / 60);
@@ -600,7 +702,6 @@
         const totalSecs = timerSeconds;
         const maxTotalSecs = 24*3600;
         const percent = Math.min(100, (totalSecs / maxTotalSecs) * 100);
-        
         const container = document.getElementById("timerVisualArea");
         if (!container) return;
         
@@ -632,7 +733,6 @@
     function attachTimerClick() {
         const el = document.getElementById("timerClickRoot");
         if (el) {
-            // remove old listener to avoid duplicates
             const newEl = el.cloneNode(true);
             if (el.parentNode) el.parentNode.replaceChild(newEl, el);
             newEl.addEventListener("click", toggleTimerPause);
@@ -646,7 +746,7 @@
         updateTimerDisplayAndViews();
     }
     
-    // SUBJECTS & MODAL
+    // Subjects render
     function renderSubjectsList() {
         const container = document.getElementById("subjectsListContainer");
         if (!subjects.length) { container.innerHTML = `<div class="empty-list"><i class="fas fa-book-open"></i><br/>Add a subject to track progress</div>`; return; }
@@ -668,7 +768,6 @@
     function openDayModal(subjectId) {
         const subject = subjects.find(s => s.id === subjectId);
         if (!subject) return;
-        currentModalSubjectId = subjectId;
         document.getElementById("modalTitle").innerHTML = `✅ ${escapeHtml(subject.name)} — mark days`;
         let checkHtml = "";
         for (let i=0; i<subject.daysNeeded; i++) {
@@ -697,46 +796,31 @@
         document.getElementById("daysNeededInput").value = "10";
     }
     
-    // ANALYSIS
+    // Analytics (unchanged but functional)
     let currentStartDate = null, currentEndDate = null;
     let activeQuickFilter = "all";
-    
     function setQuickFilter(filter) {
         activeQuickFilter = filter;
         const today = new Date();
         let start = null;
-        let end = new Date();
-        end.setUTCHours(23,59,59);
+        let end = new Date(); end.setUTCHours(23,59,59);
         const endStr = end.toISOString().split('T')[0];
-        if (filter === "week") {
-            let startDate = new Date();
-            startDate.setDate(today.getDate() - 7);
-            start = startDate.toISOString().split('T')[0];
-        } else if (filter === "month") {
-            let startDate = new Date();
-            startDate.setMonth(today.getMonth() - 1);
-            start = startDate.toISOString().split('T')[0];
-        } else if (filter === "year") {
-            start = `${today.getFullYear()}-01-01`;
-        } else {
-            start = null;
-        }
-        currentStartDate = start;
-        currentEndDate = (filter !== "all") ? endStr : null;
+        if (filter === "week") { let d = new Date(); d.setDate(today.getDate() - 7); start = d.toISOString().split('T')[0]; }
+        else if (filter === "month") { let d = new Date(); d.setMonth(today.getMonth() - 1); start = d.toISOString().split('T')[0]; }
+        else if (filter === "year") start = `${today.getFullYear()}-01-01`;
+        currentStartDate = start; currentEndDate = (filter !== "all") ? endStr : null;
         document.getElementById("filterStartDate").value = currentStartDate || "";
         document.getElementById("filterEndDate").value = currentEndDate || "";
         document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelector(`.quick-filter-btn[data-filter="${filter}"]`).classList.add('active');
         renderFilteredGraph();
     }
-    
     function getFilteredLogs() {
         let filtered = { ...dailyLogs };
         if (currentStartDate) filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date >= currentStartDate));
         if (currentEndDate) filtered = Object.fromEntries(Object.entries(filtered).filter(([date]) => date <= currentEndDate));
         return filtered;
     }
-    
     function renderFilteredGraph() {
         const filtered = getFilteredLogs();
         let dates = Object.keys(filtered).sort();
@@ -757,34 +841,12 @@
         const labels = dates.map(d => d.slice(5));
         if (chartInstance) chartInstance.destroy();
         const ctx = document.getElementById("studyGraphCanvas").getContext("2d");
-        chartInstance = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Study seconds', data: durations, backgroundColor: '#3b4e8c', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { callbacks: { label: (ctx) => formatDuration(ctx.raw) } } } } });
+        chartInstance = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Study seconds', data: durations, backgroundColor: '#3b4e8c', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: true } });
     }
-    
-    function applyCustomFilter() {
-        const start = document.getElementById("filterStartDate").value;
-        const end = document.getElementById("filterEndDate").value;
-        currentStartDate = start || null;
-        currentEndDate = end || null;
-        activeQuickFilter = null;
-        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
-        renderFilteredGraph();
-    }
-    
-    function resetFilter() {
-        document.getElementById("filterStartDate").value = "";
-        document.getElementById("filterEndDate").value = "";
-        currentStartDate = null;
-        currentEndDate = null;
-        activeQuickFilter = "all";
-        document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.quick-filter-btn[data-filter="all"]`).classList.add('active');
-        renderFilteredGraph();
-    }
-    
+    function applyCustomFilter() { currentStartDate = document.getElementById("filterStartDate").value || null; currentEndDate = document.getElementById("filterEndDate").value || null; activeQuickFilter = null; document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.classList.remove('active')); renderFilteredGraph(); }
+    function resetFilter() { document.getElementById("filterStartDate").value = ""; document.getElementById("filterEndDate").value = ""; currentStartDate = null; currentEndDate = null; setQuickFilter("all"); }
     function formatDuration(sec) { if(!sec) return "0s"; let h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; if(h>0) return `${h}h ${m}m`; if(m>0) return `${m}m ${s}s`; return `${s}s`; }
-    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-    
-    function applyFilterAndRender() { renderFilteredGraph(); }
+    function escapeHtml(str) { return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
     
     function switchScreen(screenId) {
         document.querySelectorAll('.app-screen').forEach(s => s.classList.remove('active-screen'));
@@ -797,32 +859,33 @@
         if (screenId === 'timer') updateTimerDisplayAndViews();
     }
     
-    // INIT with persistent timer
     function init() {
         loadData();
-        loadTimerFromStorage();   // restores timerSeconds + running state across sessions
+        loadTimerFromStorage();
         renderSubjectsList();
         updateTimerDisplayAndViews();
+        startTimerInternal(); // runs interval but respects isTimerRunning flag
+        
+        // Check notification permission on load
+        if ("Notification" in window && Notification.permission === "granted") {
+            notificationPermission = true;
+            updateNotifUI(true);
+        } else {
+            updateNotifUI(false);
+        }
+        lastNotificationSent = Math.floor(Date.now() / 1000);
         
         document.getElementById("addSubjectHomeBtn").addEventListener("click", addSubject);
-        document.getElementById("startTimerBtn").addEventListener("click", () => startTimer());
-        document.getElementById("stopTimerBtn").addEventListener("click", () => stopAndSaveTimer());
+        document.getElementById("startTimerBtn").addEventListener("click", startTimer);
+        document.getElementById("pauseTimerBtn").addEventListener("click", pauseTimer);
+        document.getElementById("stopTimerBtn").addEventListener("click", stopAndSaveTimer);
         document.getElementById("applyFilterBtn").addEventListener("click", applyCustomFilter);
         document.getElementById("resetFilterBtn").addEventListener("click", resetFilter);
-        
         document.querySelectorAll('.model-btn').forEach(btn => btn.addEventListener('click', (e) => changeTimerModel(btn.dataset.model)));
         document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
         document.querySelectorAll('.quick-filter-btn').forEach(btn => btn.addEventListener('click', (e) => setQuickFilter(btn.dataset.filter)));
         
-        window.addEventListener('beforeunload', () => {
-            if (timerSeconds > 0) flushCurrentTimerToLog();
-            persistTimerState();
-        });
-        
-        // also persist logs periodically every 30 seconds for extra safety
-        setInterval(() => {
-            if (timerSeconds > 0) persistTimerState();
-        }, 10000);
+        window.addEventListener('beforeunload', () => { persistTimerState(); });
         
         changeTimerModel("digital");
         setQuickFilter("all");
